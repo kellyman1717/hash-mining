@@ -161,8 +161,31 @@ async fn main() -> Result<()> {
     let rpc_url_str = std::env::var("RPC_URL").unwrap_or_else(|_| DEFAULT_RPC_URL.to_string());
     let provider = ProviderBuilder::new()
         .with_recommended_fillers()
-        .wallet(wallet)
+        .wallet(wallet.clone())
         .on_http(rpc_url_str.parse()?);
+
+    // Optional: separate private RPC for sending transactions (MEV protection)
+    // If SEND_RPC_URL is set, mine() txs go through private mempool (e.g. Flashbots/MEV-Blocker)
+    // while reads (challenge, difficulty, block) use the normal RPC_URL.
+    let send_rpc_url_str = std::env::var("SEND_RPC_URL").ok();
+    let send_provider = if let Some(ref send_url) = send_rpc_url_str {
+        Some(
+            ProviderBuilder::new()
+                .with_recommended_fillers()
+                .wallet(wallet)
+                .on_http(send_url.parse()?),
+        )
+    } else {
+        None
+    };
+    let send_contract = if send_provider.is_some() {
+        Some(HashToken::new(
+            HASH_CONTRACT_ADDRESS,
+            send_provider.as_ref().unwrap().clone(),
+        ))
+    } else {
+        None
+    };
 
     let contract = HashToken::new(HASH_CONTRACT_ADDRESS, provider.clone());
 
@@ -174,6 +197,9 @@ async fn main() -> Result<()> {
     println!("🔨 HASH Miner initialized");
     println!("📍 Miner Address: {}", miner_address);
     println!("⛽ RPC URL: {}", rpc_url_str);
+    if let Some(ref send_url) = send_rpc_url_str {
+        println!("🛡️  Send RPC (private): {}", send_url);
+    }
     println!("🧵 Worker threads: {}", num_threads);
 
     // --- Initial info via miningState() (one RPC call instead of four) ---
@@ -426,10 +452,16 @@ async fn main() -> Result<()> {
         let priority_wei = (priority_gwei * 1e9) as u128;
         let max_fee_wei = (max_fee_gwei * 1e9) as u128;
 
-        let mut tx = contract
-            .mine(sol.nonce)
-            .max_priority_fee_per_gas(priority_wei)
-            .max_fee_per_gas(max_fee_wei);
+        let mut tx = if let Some(ref sc) = send_contract {
+            sc.mine(sol.nonce)
+                .max_priority_fee_per_gas(priority_wei)
+                .max_fee_per_gas(max_fee_wei)
+        } else {
+            contract
+                .mine(sol.nonce)
+                .max_priority_fee_per_gas(priority_wei)
+                .max_fee_per_gas(max_fee_wei)
+        };
         if let Some(g) = std::env::var("GAS_LIMIT_OVERRIDE")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
