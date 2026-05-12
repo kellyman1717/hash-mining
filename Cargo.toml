@@ -1,9 +1,21 @@
 [package]
 name = "hash-miner-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Multi-threaded CPU miner for HASH token, ported from miner.js"
+description = "Multi-threaded CPU + OpenCL GPU miners for HASH and PFFT tokens (Ethereum)"
 license = "MIT"
+
+[lib]
+name = "hash_miner_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hash-miner-rs"
+path = "src/main.rs"
+
+[[bin]]
+name = "pfft-miner-rs"
+path = "src/bin/pfft-miner-rs.rs"
 
 [dependencies]
 alloy = { version = "0.8", features = [
