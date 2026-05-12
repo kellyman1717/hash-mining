@@ -344,6 +344,15 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
+    // How long to wait for a tx receipt before giving up and mining the next
+    // round. Stops the miner from hanging forever on a tx that never lands
+    // (RPC drop, mempool eviction, etc.). The original tx may still confirm
+    // later — we just stop blocking on it.
+    let confirmation_timeout_secs: u64 = std::env::var("CONFIRMATION_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(90);
+
     let shutdown = Arc::new(AtomicBool::new(false));
     {
         let shutdown = Arc::clone(&shutdown);
@@ -571,9 +580,12 @@ async fn main() -> Result<()> {
             Ok(pending) => {
                 let tx_hash = *pending.tx_hash();
                 println!("  TX:    https://etherscan.io/tx/{tx_hash}");
-                println!("  Waiting for confirmation...");
-                match pending.with_required_confirmations(1).get_receipt().await {
-                    Ok(receipt) => {
+                println!("  Waiting for confirmation (timeout {confirmation_timeout_secs}s)...");
+                let wait_fut = pending.with_required_confirmations(1).get_receipt();
+                match tokio::time::timeout(Duration::from_secs(confirmation_timeout_secs), wait_fut)
+                    .await
+                {
+                    Ok(Ok(receipt)) => {
                         if receipt.status() {
                             println!(
                                 "  MINT OK | Block {} | Gas {}",
@@ -599,7 +611,16 @@ async fn main() -> Result<()> {
                             println!("  REVERTED | Gas {}", receipt.gas_used);
                         }
                     }
-                    Err(e) => eprintln!("  Receipt error: {e}"),
+                    Ok(Err(e)) => eprintln!("  Receipt error: {e}"),
+                    Err(_) => {
+                        eprintln!(
+                            "  TX still pending after {confirmation_timeout_secs}s — moving on."
+                        );
+                        eprintln!(
+                            "  Tx hash {tx_hash} may still confirm later (check the link above)."
+                        );
+                        eprintln!("  Tip: try a different ETH_RPC (e.g. https://rpc.mevblocker.io/fast, https://rpc.flashbots.net/fast, https://eth.llamarpc.com).");
+                    }
                 }
             }
             Err(e) => eprintln!("  TX error: {e}"),

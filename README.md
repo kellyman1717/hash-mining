@@ -69,6 +69,7 @@ Semua nilai juga bisa di-pass via env var di shell.
 | `MAX_FEE_GWEI` | `100` | semua | ceiling EIP-1559 |
 | `GAS_LIMIT_OVERRIDE` | — | semua | kalau di-set, override estimate |
 | `PAUSE_BETWEEN_ROUNDS` | `5` | pfft-miner-rs | jeda antar mint (detik) |
+| `CONFIRMATION_TIMEOUT_SECS` | `90` | pfft-miner-rs | timeout nunggu receipt; lewat itu, miner skip ke round berikutnya (tx lama tetap bisa confirm di belakang) |
 
 ## Run
 
