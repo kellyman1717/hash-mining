@@ -11,7 +11,7 @@ use eyre::{eyre, Result};
 use rand::Rng;
 
 #[cfg(feature = "gpu")]
-mod gpu;
+use hash_miner_rs::gpu;
 
 const HASH_CONTRACT_ADDRESS: Address = address!("AC7b5d06fa1e77D08aea40d46cB7C5923A87A0cc");
 const DEFAULT_RPC_URL: &str = "https://eth.llamarpc.com";
@@ -183,7 +183,11 @@ async fn main() -> Result<()> {
             println!("   Era: {}", s.era);
             println!("   Reward: {} (raw, 1e18)", s.reward);
             println!("   Difficulty: {}", s.difficulty);
-            println!("   Mining minted: {} / {}", s.minted, s.minted + s.remaining);
+            println!(
+                "   Mining minted: {} / {}",
+                s.minted,
+                s.minted + s.remaining
+            );
             println!("   Current epoch: {}", s.epoch);
             println!("   Blocks left in epoch: {}", s.epochBlocksLeft);
         }
@@ -285,7 +289,10 @@ async fn main() -> Result<()> {
         println!("   Block: {}  Epoch: {}", block_num, epoch);
         println!("   Difficulty: {}", difficulty);
         println!("   Challenge: 0x{}...", hex_short(challenge.as_slice()));
-        println!("⛏️  Mining epoch {} on {} ({} threads)...", epoch, backend, num_threads);
+        println!(
+            "⛏️  Mining epoch {} on {} ({} threads)...",
+            epoch, backend, num_threads
+        );
 
         // u64 random start works for both backends; CPU widens via U256::from.
         let start_nonce_u64: u64 = rand::thread_rng().gen();
@@ -360,7 +367,13 @@ async fn main() -> Result<()> {
             {
                 if let Some(g) = gpu_miner.as_ref().cloned() {
                     let res = tokio::task::spawn_blocking(move || {
-                        g.mine(challenge, difficulty, start_nonce_u64, stop_flag, attempts_counter)
+                        g.mine(
+                            challenge,
+                            difficulty,
+                            start_nonce_u64,
+                            stop_flag,
+                            attempts_counter,
+                        )
                     })
                     .await?;
                     match res {
@@ -377,8 +390,13 @@ async fn main() -> Result<()> {
                 } else {
                     tokio::task::spawn_blocking(move || {
                         run_workers(
-                            challenge, difficulty, epoch, start_nonce,
-                            stop_flag, attempts_counter, num_threads,
+                            challenge,
+                            difficulty,
+                            epoch,
+                            start_nonce,
+                            stop_flag,
+                            attempts_counter,
+                            num_threads,
                         )
                     })
                     .await?
@@ -390,8 +408,13 @@ async fn main() -> Result<()> {
                 let _ = &gpu_miner; // silence unused
                 tokio::task::spawn_blocking(move || {
                     run_workers(
-                        challenge, difficulty, epoch, start_nonce,
-                        stop_flag, attempts_counter, num_threads,
+                        challenge,
+                        difficulty,
+                        epoch,
+                        start_nonce,
+                        stop_flag,
+                        attempts_counter,
+                        num_threads,
                     )
                 })
                 .await?
@@ -436,9 +459,7 @@ async fn main() -> Result<()> {
         {
             tx = tx.gas(g);
         }
-        println!(
-            "💸 Gas: priority={priority_gwei} gwei, maxFee={max_fee_gwei} gwei (ceiling)"
-        );
+        println!("💸 Gas: priority={priority_gwei} gwei, maxFee={max_fee_gwei} gwei (ceiling)");
 
         match tx.send().await {
             Ok(pending) => {
@@ -459,9 +480,7 @@ async fn main() -> Result<()> {
                                     "🏆 Mined ~{} HASH tokens",
                                     reward_for_total_mints(total_mints._0)
                                 );
-                                println!(
-                                    "📈 Total successful mints this session: {success_count}"
-                                );
+                                println!("📈 Total successful mints this session: {success_count}");
                             }
                         } else {
                             println!("❌ Transaction reverted (status=0)");

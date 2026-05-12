@@ -1,0 +1,18 @@
+[Unit]
+Description=PFFT Miner Bot (Rust + GPU) - Pow Free Fair Token
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.hermes/workspace/pfft-miner
+EnvironmentFile=-/root/.hermes/workspace/pfft-miner/.env
+# Build with `cargo build --release` and copy/symlink the produced binary into
+# WorkingDirectory before enabling the unit. The binary handles its own .env
+# loading too, so EnvironmentFile above is optional.
+ExecStart=/root/.hermes/workspace/pfft-miner/pfft-miner-rs
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

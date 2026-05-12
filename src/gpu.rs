@@ -16,6 +16,9 @@ const KERNEL_SRC: &str = include_str!("keccak_kernel.cl");
 const DEFAULT_BATCH: usize = 1 << 22; // 4,194,304 nonces/dispatch
 
 pub struct GpuMiner {
+    // The Context must outlive the queue/program/kernels even though we only
+    // ever reference it via cloned `Queue` handles.
+    #[allow(dead_code)]
     context: Context,
     queue: Queue,
     program: Program,
@@ -28,8 +31,7 @@ impl GpuMiner {
         let batch_size = batch_size.unwrap_or(DEFAULT_BATCH);
 
         let platform = Platform::default();
-        let device = Device::first(platform)
-            .map_err(|e| eyre!("no OpenCL device found: {e}"))?;
+        let device = Device::first(platform).map_err(|e| eyre!("no OpenCL device found: {e}"))?;
         let device_name = device.name().unwrap_or_else(|_| "<unknown>".into());
 
         let context = Context::builder()
@@ -70,7 +72,10 @@ impl GpuMiner {
         let nonce_base: u64 = 12345;
 
         // Run a 1-thread batch (global size = 1, work-item 0 gets nonce_base).
-        let (cw, dw) = (split_challenge_le(&challenge), split_difficulty_be(difficulty));
+        let (cw, dw) = (
+            split_challenge_le(&challenge),
+            split_difficulty_be(difficulty),
+        );
 
         let found_nonce = Buffer::<u64>::builder()
             .queue(self.queue.clone())
@@ -90,20 +95,30 @@ impl GpuMiner {
             .name("mine_keccak")
             .queue(self.queue.clone())
             .global_work_size(1usize)
-            .arg(cw[0]).arg(cw[1]).arg(cw[2]).arg(cw[3])
-            .arg(dw[0]).arg(dw[1]).arg(dw[2]).arg(dw[3])
+            .arg(cw[0])
+            .arg(cw[1])
+            .arg(cw[2])
+            .arg(cw[3])
+            .arg(dw[0])
+            .arg(dw[1])
+            .arg(dw[2])
+            .arg(dw[3])
             .arg(nonce_base)
             .arg(&found_nonce)
             .arg(&found_flag)
             .build()?;
 
-        unsafe { kernel.enq()?; }
+        unsafe {
+            kernel.enq()?;
+        }
         self.queue.finish()?;
 
         let mut flag = [0i32];
         found_flag.read(&mut flag[..]).enq()?;
         if flag[0] == 0 {
-            return Err(eyre!("self-test: GPU did not report any hit against MAX difficulty"));
+            return Err(eyre!(
+                "self-test: GPU did not report any hit against MAX difficulty"
+            ));
         }
 
         let mut got = [0u64];
@@ -119,7 +134,7 @@ impl GpuMiner {
         // Now verify the hash computed against the known nonce matches the
         // CPU reference (the same proof formula the contract uses).
         let cpu_hash = cpu_hash(&challenge, U256::from(nonce_base));
-        if !(U256::from_be_bytes::<32>(cpu_hash.0) < difficulty) {
+        if U256::from_be_bytes::<32>(cpu_hash.0) >= difficulty {
             // unreachable: MAX difficulty
             return Err(eyre!("self-test sanity: CPU hash >= MAX difficulty"));
         }
@@ -169,14 +184,22 @@ impl GpuMiner {
                 .name("mine_keccak")
                 .queue(self.queue.clone())
                 .global_work_size(self.batch_size)
-                .arg(cw[0]).arg(cw[1]).arg(cw[2]).arg(cw[3])
-                .arg(dw[0]).arg(dw[1]).arg(dw[2]).arg(dw[3])
+                .arg(cw[0])
+                .arg(cw[1])
+                .arg(cw[2])
+                .arg(cw[3])
+                .arg(dw[0])
+                .arg(dw[1])
+                .arg(dw[2])
+                .arg(dw[3])
                 .arg(nonce_base)
                 .arg(&found_nonce)
                 .arg(&found_flag)
                 .build()?;
 
-            unsafe { kernel.enq()?; }
+            unsafe {
+                kernel.enq()?;
+            }
             self.queue.finish()?;
 
             attempts_counter.fetch_add(self.batch_size as u64, Ordering::Relaxed);
